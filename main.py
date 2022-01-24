@@ -10,7 +10,7 @@ from PIL import Image
 mp_drawing = mp.solutions.drawing_utils
 mp_face_mesh = mp.solutions.face_mesh
 DEMO_IMAGE = 'demo.jpeg'
-DEMO_VIDEO = 'demo.mp4'
+DEMO_VIDEO = 'demo.avi'
 
 st.title('Face Mesh Application')
 
@@ -150,9 +150,12 @@ elif app_mode == 'Run on Video':
     use_webcam = st.sidebar.button("Use Webcam")
     record = st.sidebar.checkbox("Record Video")
     
-    drawing_spec = mp_drawing.DrawingSpec(thickness=2, circle_radius=1)
+    if record: 
+        st.checkbox("Recording", value=True)
     
-    st.sidebar.markdown('---')
+    # drawing_spec = mp_drawing.DrawingSpec(thickness=2, circle_radius=1)
+    
+    # st.sidebar.markdown('---')
     
     st.markdown(
         """
@@ -168,48 +171,114 @@ elif app_mode == 'Run on Video':
         """,
         unsafe_allow_html = True
     )
+        
+    max_faces = st.sidebar.number_input("Maximum Faces: ", value=5, min_value=1)
+    st.sidebar.markdown("---")
     
-    st.markdown("**Detect Faces**")
+    tracking_confidence = st.sidebar.slider("Minimum Tracking Confidence", min_value=0.0, value=0.5, max_value=1.0)
+    st.sidebar.markdown("---")
     
-    max_faces = st.sidebar.number_input("Maximum Faces: ", value=2, min_value=1)
-    st.markdown("---")
+    detection_confidence = st.sidebar.slider("Minimum Detection Confidence", min_value=0.0, value=0.5, max_value=1.0)
+    st.sidebar.markdown("---")
     
-    detection_confidence = st.sidebar.slider("Minimum Detection Confiednce", min_value=0.0, value=0.5, max_value=1.0)
-    st.markdown("---")
+    st.markdown("## Output")
     
-    img_file = st.sidebar.file_uploader("Upload an Image", type=["png","jpg","jpeg"])
-    if img_file is not None: 
-        image = np.array(Image.open(img_file))
+    stframe = st.empty()
+    video_file = st.sidebar.file_uploader("Upload a Video", type=["mp4", "mov", "avi"])
+    tffile = tempfile.NamedTemporaryFile(delete=False)
+    
+    # Getting input video file from here.
+    if not video_file: 
+        if use_webcam: 
+            video = cv2.VideoCapture(0)
+        else:
+            video = cv2.VideoCapture(DEMO_VIDEO)
+            tffile.name = DEMO_VIDEO
     else: 
-        demo_image = DEMO_IMAGE
-        image = np.array(Image.open(DEMO_IMAGE))
+        tffile.write(video_file.read())
+        video = cv2.VideoCapture(tffile.name)
     
-    st.sidebar.text('Original Image')
-    st.sidebar.image(image)
+    width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps_input = int(video.get(cv2.CAP_PROP_FPS))
+    
+    # Recording part! 
+    codec = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter('Output.mp4', codec, fps_input, (width, height))
+    
+    st.sidebar.text("Input Video")
+    st.sidebar.video(tffile.name)
+    
+    fps = 0
+    i = 0
+    
+    drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+    kpi1, kpi2, kpi3 = st.columns(3)
+    
+    with kpi1:
+        st.markdown("**Frame Rate**")
+        kpi1_text = st.markdown("0")
+    
+    with kpi2:
+        st.markdown("**Detected Faces**")
+        kpi2_text = st.markdown("0")
+    
+    with kpi3:
+        st.markdown("**Image Width**")
+        kpi3_text = st.markdown("0")
+    
+    st.markdown("<hr>/", unsafe_allow_html=True)
     
     face_count = 0
     
-    ## Dashboard
     with mp_face_mesh.FaceMesh(
-        static_image_mode = True,
+        min_tracking_confidence = tracking_confidence,
         max_num_faces = max_faces,
         min_detection_confidence = detection_confidence
     ) as face_mesh: 
         
-        results = face_mesh.process(image)
-        out_image = image.copy()
+        prevTime = 0
         
-        ## Face landmark drawing
+        while video.isOpened(): 
+            i += 1
+            ret, frame = video.read()
+            
+            if not ret : 
+                continue 
+            
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = face_mesh.process(frame)
+            frame.flags.writeable = True
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            
+            face_count = 0
+            if results.multi_face_landmarks: 
+                for face_landmark in results.multi_face_landmarks: 
+                    face_count += 1 
+                    
+                    mp_drawing.draw_landmarks(
+                        image = frame,
+                        landmark_list = face_landmark,
+                        connections = mp_face_mesh.FACEMESH_CONTOURS,
+                        landmark_drawing_spec = drawing_spec,
+                        connection_drawing_spec = drawing_spec
+                    )
         
-        for face_landmark in results.multi_face_landmarks: 
-            face_count += 1 
+                # FPS counter
+                currTime = time.time()
+                fps = 1/(currTime - prevTime)
+                prevTime = currTime
+                    
+                if record: 
+                    out.write(frame)
+                    
+                frame = cv2.resize(frame, (0,0), fx=0.8, fy=0.8)
+                frame = image_resize(image=frame, width=640)
+                stframe.image(frame, channels='BGR', use_column_width=True)
+        
             
-            mp_drawing.draw_landmarks(
-                image = out_image,
-                landmark_list = face_landmark,
-                connections = mp_face_mesh.FACEMESH_CONTOURS,
-                landmark_drawing_spec = drawing_spec 
-            )
-            
-        st.subheader('Output Image')
-        st.image(out_image, use_column_width=True)
+        # st.subheader('Output Image')
+        # st.image(out_image, use_column_width=True)
+    
+    ## Dashboard
+    
