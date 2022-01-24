@@ -76,8 +76,6 @@ if app_mode == 'About':
         unsafe_allow_html = True
     )
 
-# st.video('https://www.youtube.com/watch?v=zkw9aI1-feM')
-
 elif app_mode == 'Run on Image': 
     drawing_spec = mp_drawing.DrawingSpec(thickness=2, circle_radius=1)
     
@@ -152,10 +150,6 @@ elif app_mode == 'Run on Video':
     
     if record: 
         st.checkbox("Recording", value=True)
-    
-    # drawing_spec = mp_drawing.DrawingSpec(thickness=2, circle_radius=1)
-    
-    # st.sidebar.markdown('---')
     
     st.markdown(
         """
@@ -276,9 +270,3 @@ elif app_mode == 'Run on Video':
                 frame = image_resize(image=frame, width=640)
                 stframe.image(frame, channels='BGR', use_column_width=True)
         
-            
-        # st.subheader('Output Image')
-        # st.image(out_image, use_column_width=True)
-    
-    ## Dashboard
-    
